@@ -5,7 +5,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -13,6 +12,8 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -32,20 +33,20 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
 
     private lateinit var rootLayout: FrameLayout
-    private lateinit var dashboardView: LinearLayout
-    private lateinit var webViewContainer: FrameLayout
+    private lateinit var splashOverlay: LinearLayout
     private lateinit var webView: WebView
     private lateinit var statusText: TextView
+    private lateinit var setupButtonsContainer: LinearLayout
     private lateinit var progressBar: ProgressBar
 
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Portas locais onde o Ubuntu ARM64 expõe o Antigravity para o APK:
-    // 7681 -> ttyd (Antigravity CLI direto em tela cheia com suporte a touch/teclado)
-    // 6080 -> noVNC / websockify (Desktop Linux XFCE4 + Antigravity em tela cheia)
-    private val URL_CLI = "http://127.0.0.1:7681"
-    private val URL_DESKTOP = "http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=remote"
+    // No tablet/celular, o APK se conecta diretamente à janela fullscreen do Antigravity:
+    // Porta 6080 -> Janela Kiosk do Antigravity Desktop (sem barras do Linux)
+    // Porta 7681 -> Antigravity nativo via WebSocket (ttyd)
+    private val URL_KIOSK_APP = "http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=remote&reconnect=true&show_dot=false"
+    private val URL_CLI_APP = "http://127.0.0.1:7681"
     private val INSTALL_CMD = "pkg update -y && pkg install -y git curl && git clone https://github.com/rafanunesran/antigravity-mobile.git ~/antigravity-mobile 2>/dev/null || (cd ~/antigravity-mobile && git pull); bash ~/antigravity-mobile/install.sh"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +56,30 @@ class MainActivity : AppCompatActivity() {
         window.navigationBarColor = Color.parseColor("#0D1117")
 
         buildUI()
-        checkLinuxServices()
+        enableImmersiveFullscreen()
+
+        // Ao tocar no ícone do app no Tablet/Celular, já inicia e abre direto o Antigravity!
+        autoBootAntigravity()
+    }
+
+    private fun enableImmersiveFullscreen() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -64,66 +88,10 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0D1117"))
         }
 
-        // 1. Painel Inicial de Controle do Container Linux
-        dashboardView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(64, 64, 64, 64)
-        }
-
-        val title = TextView(this).apply {
-            text = "🚀 Antigravity Linux"
-            textSize = 28f
-            setTextColor(Color.parseColor("#58A6FF"))
-            gravity = Gravity.CENTER
-        }
-
-        val subtitle = TextView(this).apply {
-            text = "Ambiente Ubuntu ARM64 + Google Antigravity para Celular e Tablet"
-            textSize = 14f
-            setTextColor(Color.parseColor("#8B949E"))
-            gravity = Gravity.CENTER
-            setPadding(0, 12, 0, 40)
-        }
-
-        statusText = TextView(this).apply {
-            text = "Verificando motor Linux local..."
-            textSize = 15f
-            setTextColor(Color.parseColor("#3FB950"))
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 24)
-        }
-
-        progressBar = ProgressBar(this).apply {
-            visibility = View.GONE
-        }
-
-        val btnStartCli = createStyledButton("⚡ Abrir Antigravity (Modo Terminal Nativo)", "#238636") {
-            bootLinuxAndConnect(mode = "cli", targetUrl = URL_CLI)
-        }
-
-        val btnStartGui = createStyledButton("🖥️ Abrir Antigravity Desktop (Modo Tablet / GUI)", "#1F6FEB") {
-            bootLinuxAndConnect(mode = "gui", targetUrl = URL_DESKTOP)
-        }
-
-        val btnProvision = createStyledButton("📦 Instalar / Atualizar Motor Linux (1º Uso)", "#30363D") {
-            provisionLinuxEngine()
-        }
-
-        dashboardView.addView(title)
-        dashboardView.addView(subtitle)
-        dashboardView.addView(statusText)
-        dashboardView.addView(progressBar)
-        dashboardView.addView(btnStartCli)
-        dashboardView.addView(btnStartGui)
-        dashboardView.addView(btnProvision)
-
-        // 2. Container Tela Cheia para exibir o Antigravity rodando no Linux
-        webViewContainer = FrameLayout(this).apply {
-            visibility = View.GONE
-        }
-
+        // WebView 100% Tela Cheia que exibe exclusivamente a janela do Antigravity
         webView = WebView(this).apply {
+            visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#0D1117"))
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
@@ -131,120 +99,158 @@ class MainActivity : AppCompatActivity() {
             settings.loadWithOverviewMode = true
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    // Oculta a barra lateral do noVNC para parecer um app nativo puro do Antigravity
+                    view?.evaluateJavascript(
+                        """
+                        (function() {
+                            var style = document.createElement('style');
+                            style.innerHTML = '#noVNC_control_bar, #noVNC_control_bar_anchor, #noVNC_status { display: none !important; } body { background: #0D1117 !important; margin: 0; overflow: hidden; }';
+                            document.head.appendChild(style);
+                        })();
+                        """.trimIndent(),
+                        null
+                    )
+                }
+            }
             webChromeClient = WebChromeClient()
         }
 
-        val floatingMenuBtn = Button(this).apply {
-            text = "⚙️ Painel"
-            textSize = 11f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#AA161B22"))
-            val params = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                100
-            ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                setMargins(16, 16, 16, 16)
-            }
-            layoutParams = params
-            setOnClickListener {
-                webViewContainer.visibility = View.GONE
-                dashboardView.visibility = View.VISIBLE
-                checkLinuxServices()
-            }
+        // Splash Screen minimalista enquanto o motor Linux sobe o Antigravity em background
+        splashOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(64, 64, 64, 64)
+            setBackgroundColor(Color.parseColor("#0D1117"))
         }
 
-        webViewContainer.addView(
+        val title = TextView(this).apply {
+            text = "Antigravity"
+            textSize = 32f
+            setTextColor(Color.parseColor("#E6EDF3"))
+            gravity = Gravity.CENTER
+        }
+
+        statusText = TextView(this).apply {
+            text = "Iniciando Antigravity..."
+            textSize = 15f
+            setTextColor(Color.parseColor("#8B949E"))
+            gravity = Gravity.CENTER
+            setPadding(0, 24, 0, 32)
+        }
+
+        progressBar = ProgressBar(this).apply {
+            visibility = View.VISIBLE
+        }
+
+        setupButtonsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+
+        val btnRetry = createButton("🔄 Tentar Conectar Novamente", "#238636") {
+            autoBootAntigravity()
+        }
+
+        val btnSwitchCli = createButton("⚡ Abrir em Modo Terminal (CLI)", "#1F6FEB") {
+            openAntigravitySurface(URL_CLI_APP)
+        }
+
+        val btnFirstSetup = createButton("📦 Configurar Motor Linux (Apenas 1ª Vez)", "#30363D") {
+            runFirstTimeSetup()
+        }
+
+        setupButtonsContainer.addView(btnRetry)
+        setupButtonsContainer.addView(btnSwitchCli)
+        setupButtonsContainer.addView(btnFirstSetup)
+
+        splashOverlay.addView(title)
+        splashOverlay.addView(statusText)
+        splashOverlay.addView(progressBar)
+        splashOverlay.addView(setupButtonsContainer)
+
+        rootLayout.addView(
             webView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
-        webViewContainer.addView(floatingMenuBtn)
-
-        rootLayout.addView(dashboardView)
-        rootLayout.addView(webViewContainer)
+        rootLayout.addView(
+            splashOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
 
         setContentView(rootLayout)
     }
 
-    private fun createStyledButton(label: String, hexColor: String, onClick: () -> Unit): Button {
+    private fun createButton(label: String, hexColor: String, onClick: () -> Unit): Button {
         return Button(this).apply {
             text = label
             isAllCaps = false
             textSize = 15f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor(hexColor))
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, 16, 0, 16)
+            val params = LinearLayout.LayoutParams(720, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 14, 0, 14)
             }
             layoutParams = params
-            setPadding(32, 32, 32, 32)
+            setPadding(32, 28, 32, 28)
             setOnClickListener { onClick() }
         }
     }
 
-    private fun checkLinuxServices() {
-        executor.execute {
-            val cliOnline = isPortOpen("http://127.0.0.1:7681")
-            val guiOnline = isPortOpen("http://127.0.0.1:6080")
-            mainHandler.post {
-                when {
-                    cliOnline && guiOnline -> statusText.text = "✅ Motor Linux Ativo (CLI + Desktop prontos)"
-                    cliOnline -> statusText.text = "✅ Motor Linux Ativo (Modo Terminal pronto)"
-                    guiOnline -> statusText.text = "✅ Motor Linux Ativo (Modo Desktop pronto)"
-                    else -> statusText.text = "⏸️ Motor Linux em espera (Clique abaixo para iniciar)"
-                }
-            }
-        }
-    }
-
-    private fun bootLinuxAndConnect(mode: String, targetUrl: String) {
+    private fun autoBootAntigravity() {
         progressBar.visibility = View.VISIBLE
-        statusText.text = "Iniciando container Ubuntu ARM64 e Antigravity ($mode)..."
+        setupButtonsContainer.visibility = View.GONE
+        statusText.text = "Iniciando Antigravity..."
 
-        // Envia Intent RUN_COMMAND para o motor Termux iniciar o daemon se ainda não estiver ativo
-        sendTermuxCommand("/data/data/com.termux/files/usr/bin/agy-mobile", arrayOf("app-daemon", mode))
+        // Acorda o container Linux silenciosamente em segundo plano
+        sendTermuxCommand("/data/data/com.termux/files/usr/bin/agy-mobile", arrayOf("app-daemon", "both"))
 
         executor.execute {
-            var connected = false
-            for (attempt in 1..25) {
-                if (isPortOpen(targetUrl)) {
-                    connected = true
+            var targetUrl: String? = null
+            for (attempt in 1..20) {
+                if (isPortOpen("http://127.0.0.1:6080")) {
+                    targetUrl = URL_KIOSK_APP
+                    break
+                } else if (isPortOpen("http://127.0.0.1:7681")) {
+                    targetUrl = URL_CLI_APP
                     break
                 }
-                Thread.sleep(800)
+                Thread.sleep(600)
             }
 
             mainHandler.post {
-                progressBar.visibility = View.GONE
-                if (connected) {
-                    openEmbeddedLinuxView(targetUrl)
+                if (targetUrl != null) {
+                    openAntigravitySurface(targetUrl)
                 } else {
-                    statusText.text = "⚠️ O servidor local ainda não respondeu. Iniciando via motor Termux..."
-                    launchTermuxAppFallback()
+                    progressBar.visibility = View.GONE
+                    statusText.text = "Motor Linux ainda não inicializado neste aparelho."
+                    setupButtonsContainer.visibility = View.VISIBLE
                 }
             }
         }
     }
 
-    private fun openEmbeddedLinuxView(url: String) {
-        dashboardView.visibility = View.GONE
-        webViewContainer.visibility = View.VISIBLE
+    private fun openAntigravitySurface(url: String) {
+        splashOverlay.visibility = View.GONE
+        webView.visibility = View.VISIBLE
         webView.loadUrl(url)
     }
 
-    private fun provisionLinuxEngine() {
+    private fun runFirstTimeSetup() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Install Antigravity Linux", INSTALL_CMD))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Install Antigravity", INSTALL_CMD))
         Toast.makeText(
             this,
-            "Comando de instalação copiado! Cole no Termux na primeira vez.",
+            "Comando copiado! Cole no Termux para concluir a instalação única.",
             Toast.LENGTH_LONG
         ).show()
 
@@ -253,7 +259,11 @@ class MainActivity : AppCompatActivity() {
             arrayOf("-c", INSTALL_CMD),
             background = false
         )
-        launchTermuxAppFallback()
+
+        val launchIntent = packageManager.getLaunchIntentForPackage("com.termux")
+        if (launchIntent != null) {
+            startActivity(launchIntent)
+        }
     }
 
     private fun sendTermuxCommand(executable: String, args: Array<String>, background: Boolean = true) {
@@ -268,28 +278,14 @@ class MainActivity : AppCompatActivity() {
             }
             startService(intent)
         } catch (_: Exception) {
-            // Se o usuário ainda não habilitou allow-external-apps, o fallback abre o Termux diretamente
-        }
-    }
-
-    private fun launchTermuxAppFallback() {
-        val launchIntent = packageManager.getLaunchIntentForPackage("com.termux")
-        if (launchIntent != null) {
-            startActivity(launchIntent)
-        } else {
-            Toast.makeText(
-                this,
-                "Instale o app base Termux (F-Droid) para fornecer o kernel/runtime Linux.",
-                Toast.LENGTH_LONG
-            ).show()
         }
     }
 
     private fun isPortOpen(urlStr: String): Boolean {
         return try {
             val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 600
-                readTimeout = 600
+                connectTimeout = 500
+                readTimeout = 500
                 requestMethod = "GET"
             }
             val code = conn.responseCode
@@ -300,11 +296,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enableImmersiveFullscreen()
+        }
+    }
+
     override fun onBackPressed() {
-        if (webViewContainer.visibility == View.VISIBLE) {
-            webViewContainer.visibility = View.GONE
-            dashboardView.visibility = View.VISIBLE
-            checkLinuxServices()
+        if (webView.visibility == View.VISIBLE && webView.canGoBack()) {
+            webView.goBack()
         } else {
             super.onBackPressed()
         }

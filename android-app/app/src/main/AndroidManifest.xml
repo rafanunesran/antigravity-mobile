@@ -14,7 +14,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Antigravity Linux"
+        android:label="Antigravity"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"

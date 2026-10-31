@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Script executado DENTRO do container Ubuntu ARM64 (proot-distro)
-# Instala pacotes essenciais, Node.js, Python, XFCE4, TigerVNC, noVNC e Antigravity
+# Instala o aplicativo oficial Google Antigravity (APT repo) + Modo Kiosk (Single App)
 # ==============================================================================
 
 set -euo pipefail
@@ -17,7 +17,7 @@ echo -e "${CYAN}[Ubuntu Guest] Atualizando repositórios APT e pacotes do sistem
 apt-get update -y
 apt-get upgrade -y
 
-echo -e "${CYAN}[Ubuntu Guest] Instalando ferramentas de desenvolvimento, keyring e dependências...${NC}"
+echo -e "${CYAN}[Ubuntu Guest] Instalando dependências base, gerenciador de janela Kiosk (Openbox) e noVNC...${NC}"
 apt-get install -y \
     curl \
     wget \
@@ -35,30 +35,38 @@ apt-get install -y \
     gnome-keyring \
     libsecret-1-0 \
     libsecret-tools \
-    jq \
-    unzip \
-    htop \
-    nano
-
-echo -e "${CYAN}[Ubuntu Guest] Instalando ambiente gráfico leve (XFCE4 + TigerVNC + noVNC/websockify)...${NC}"
-apt-get install -y \
-    xfce4 \
-    xfce4-goodies \
-    xfce4-terminal \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libgbm1 \
+    libasound2t64 || apt-get install -y libasound2 \
+    openbox \
+    xterm \
     tigervnc-standalone-server \
     tigervnc-common \
     novnc \
     python3-websockify \
-    x11-xserver-utils
+    x11-xserver-utils \
+    jq \
+    unzip
 
-echo -e "${CYAN}[Ubuntu Guest] Instalando o Google Antigravity CLI (agy)...${NC}"
-if curl -fsSL https://antigravity.google/cli/install.sh | bash; then
-    echo -e "${GREEN}[Ubuntu Guest] Antigravity CLI instalado pelo script oficial!${NC}"
+echo -e "${CYAN}[Ubuntu Guest] Adicionando repositório APT oficial do Google Antigravity...${NC}"
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/antigravity-repo-key.gpg
+echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-debian main" > /etc/apt/sources.list.d/antigravity.list
+
+apt-get update -y || true
+if apt-get install -y antigravity; then
+    echo -e "${GREEN}[Ubuntu Guest] Aplicativo Google Antigravity Desktop instalado via APT!${NC}"
 else
-    echo -e "${YELLOW}[Ubuntu Guest] Aviso: Instalador remoto será finalizado no primeiro boot do agy.${NC}"
+    echo -e "${YELLOW}[Ubuntu Guest] Pacote 'antigravity' GUI em fallback; garantindo Antigravity CLI (agy)...${NC}"
 fi
 
-# Garante que ~/.local/bin e caminhos do Antigravity estejam no PATH
+echo -e "${CYAN}[Ubuntu Guest] Instalando Google Antigravity CLI (agy)...${NC}"
+curl -fsSL https://antigravity.google/cli/install.sh | bash || true
+
+# Garante que ~/.local/bin esteja no PATH
 if ! grep -q "antigravity" "$HOME/.bashrc" 2>/dev/null; then
     cat >> "$HOME/.bashrc" << 'EOF'
 
@@ -68,33 +76,45 @@ export DISPLAY="${DISPLAY:-:1}"
 EOF
 fi
 
-# Configura xstartup do VNC para abrir o XFCE4 e já lançar o Antigravity automaticamente!
+# Configura Openbox sem bordas de janela (Modo Kiosk / Single App em Tela Cheia)
+mkdir -p "$HOME/.config/openbox"
+cat > "$HOME/.config/openbox/rc.xml" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc" xmlns:xi="http://www.w3.org/2001/XInclude">
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <maximized>yes</maximized>
+      <fullscreen>yes</fullscreen>
+    </application>
+  </applications>
+</openbox_config>
+EOF
+
+# Configura xstartup do VNC para rodar APENAS o app do Antigravity (sem área de trabalho do Linux!)
 mkdir -p "$HOME/.vnc"
 cat > "$HOME/.vnc/xstartup" << 'EOF'
 #!/usr/bin/env bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 export DISPLAY=:1
-export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$PATH"
-(sleep 3 && xfce4-terminal --maximize -T "Google Antigravity" -e "bash -ic 'agy || (curl -fsSL https://antigravity.google/cli/install.sh | bash && agy); exec bash'") &
-exec dbus-launch --exit-with-session startxfce4
+export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:/usr/bin:/bin:$PATH"
+
+xsetroot -solid "#0D1117"
+openbox-session &
+
+# Loop Kiosk: Mantém o aplicativo Antigravity sempre aberto em tela cheia
+while true; do
+    if command -v antigravity >/dev/null 2>&1; then
+        antigravity --no-sandbox --disable-gpu --maximize
+    elif [ -x "/usr/share/antigravity/antigravity" ]; then
+        /usr/share/antigravity/antigravity --no-sandbox --disable-gpu --maximize
+    else
+        xterm -fullscreen -bg "#0D1117" -fg "#E6EDF3" -fa "Monospace" -fs 13 -e "bash -ic 'agy'"
+    fi
+    sleep 1
+done
 EOF
 chmod +x "$HOME/.vnc/xstartup"
 
-# Cria um lançador na Área de Trabalho do XFCE para o Antigravity
-mkdir -p "$HOME/Desktop"
-cat > "$HOME/Desktop/Antigravity.desktop" << 'EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Google Antigravity
-Comment=Iniciar Antigravity CLI / IDE no Linux Mobile
-Exec=xfce4-terminal --maximize -T "Google Antigravity (agy)" -e "bash -ic 'agy || (curl -fsSL https://antigravity.google/cli/install.sh | bash && agy); exec bash'"
-Icon=utilities-terminal
-Terminal=false
-Categories=Development;IDE;
-StartupNotify=true
-EOF
-chmod +x "$HOME/Desktop/Antigravity.desktop"
-
-echo -e "${GREEN}[Ubuntu Guest] Provisionamento do Ubuntu ARM64 finalizado!${NC}"
+echo -e "${GREEN}[Ubuntu Guest]Modo Single-App do Antigravity configurado com sucesso!${NC}"
