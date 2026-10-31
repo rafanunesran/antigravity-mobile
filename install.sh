@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
-# Antigravity Mobile (Android / Tablet Linux Installer)
-# Prepara o Termux + Ubuntu ARM64 (proot-distro) + XFCE4/VNC + Antigravity (agy)
+# Antigravity Mobile (Android / Tablet Linux Installer + APK Daemon Bridge)
+# Prepara o Termux + Ubuntu ARM64 (proot-distro) + XFCE4/noVNC + ttyd + agy
 # ==============================================================================
 
 set -euo pipefail
@@ -24,24 +24,30 @@ banner() {
     clear
     echo -e "${CYAN}"
     echo "  ╔═══════════════════════════════════════════════════════════╗"
-    echo "  ║             🚀 ANTIGRAVITY MOBILE (LINUX)                 ║"
+    echo "  ║             🚀 ANTIGRAVITY MOBILE (LINUX APK)             ║"
     echo "  ║      Ubuntu ARM64 + Antigravity CLI & Desktop no Android  ║"
     echo "  ╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-check_environment() {
-    if [ ! -d "/data/data/com.termux" ] && [ -z "${TERMUX_VERSION:-}" ]; then
-        log_warn "Ambiente Termux não detectado diretamente. Executando em modo compatível Linux..."
+configure_termux_external_apps() {
+    log_info "Habilitando comunicação com o APK Antigravity Linux (allow-external-apps)..."
+    mkdir -p "${HOME}/.termux"
+    PROP_FILE="${HOME}/.termux/termux.properties"
+    if [ -f "${PROP_FILE}" ]; then
+        sed -i '/allow-external-apps/d' "${PROP_FILE}"
     fi
+    echo "allow-external-apps = true" >> "${PROP_FILE}"
+    command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+    log_ok "Comunicação direta com o APK Android habilitada!"
 }
 
 setup_termux_packages() {
     if command -v pkg >/dev/null 2>&1; then
         log_info "Atualizando pacotes do Termux e instalando dependências base..."
         pkg update -y && pkg upgrade -y
-        pkg install -y proot-distro pulseaudio curl wget git x11-repo tur-repo
-        pkg install -y termux-x11-nightly || log_warn "termux-x11-nightly opcional não instalado; VNC estará disponível."
+        pkg install -y proot-distro pulseaudio curl wget git ttyd x11-repo tur-repo
+        pkg install -y termux-x11-nightly || log_warn "termux-x11-nightly opcional não instalado; noVNC/VNC estará disponível."
         termux-setup-storage || true
         log_ok "Pacotes base do Termux instalados!"
     else
@@ -65,7 +71,7 @@ setup_ubuntu_distro() {
 }
 
 provision_guest() {
-    log_info "Provisionando o interior do Ubuntu (Dependências, Antigravity CLI, XFCE4 e VNC)..."
+    log_info "Provisionando o interior do Ubuntu (Antigravity CLI, XFCE4, TigerVNC e noVNC)..."
 
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "${SCRIPT_DIR}/scripts/ubuntu-guest-setup.sh" ]; then
@@ -82,7 +88,7 @@ provision_guest() {
 }
 
 install_launcher() {
-    log_info "Instalando comando 'agy-mobile' e atalhos (Termux:Widget)..."
+    log_info "Instalando comando 'agy-mobile' e ponte para o APK..."
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     BIN_DIR="${PREFIX:-/usr/local}/bin"
     mkdir -p "${BIN_DIR}"
@@ -94,7 +100,6 @@ install_launcher() {
     fi
     chmod +x "${BIN_DIR}/agy-mobile"
 
-    # Atalhos para Termux:Widget na tela inicial do celular/tablet
     mkdir -p "${HOME}/.shortcuts"
     cat > "${HOME}/.shortcuts/Antigravity-CLI.sh" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -106,13 +111,13 @@ agy-mobile gui
 EOF
     chmod +x "${HOME}/.shortcuts/Antigravity-CLI.sh" "${HOME}/.shortcuts/Antigravity-Desktop.sh"
 
-    log_ok "Atalhos criados! Digite 'agy-mobile' a qualquer momento."
+    log_ok "Atalhos e daemon do APK instalados!"
 }
 
 main() {
     banner
     mkdir -p "${INSTALL_DIR}"
-    check_environment
+    configure_termux_external_apps
     setup_termux_packages
     setup_ubuntu_distro
     provision_guest
@@ -120,14 +125,10 @@ main() {
 
     echo ""
     echo -e "${GREEN}═════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN} 🎉 Instalação concluída com sucesso!${NC}"
+    echo -e "${GREEN} 🎉 Instalação concluída! Agora você pode abrir pelo APK!${NC}"
     echo -e "${GREEN}═════════════════════════════════════════════════════════════${NC}"
-    echo -e "Comandos disponíveis no Termux:"
-    echo -e "  ${CYAN}agy-mobile${NC}         -> Abre o painel interativo (Menu)"
-    echo -e "  ${CYAN}agy-mobile cli${NC}     -> Inicia direto o Antigravity CLI (agy) no Ubuntu"
-    echo -e "  ${CYAN}agy-mobile gui${NC}     -> Inicia o Desktop Linux (VNC/X11) para Tablet/Celular"
-    echo -e "  ${CYAN}agy-mobile shell${NC}   -> Abre o terminal bash do Ubuntu ARM64"
-    echo ""
+    echo -e "Iniciando os serviços em background para o APK Antigravity Linux..."
+    agy-mobile app-daemon both || true
 }
 
 main "$@"

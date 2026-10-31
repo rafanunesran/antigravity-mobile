@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Script executado DENTRO do container Ubuntu ARM64 (proot-distro)
-# Instala pacotes essenciais, Node.js, Python, XFCE4/TigerVNC e Google Antigravity
+# Instala pacotes essenciais, Node.js, Python, XFCE4, TigerVNC, noVNC e Antigravity
 # ==============================================================================
 
 set -euo pipefail
@@ -40,20 +40,22 @@ apt-get install -y \
     htop \
     nano
 
-echo -e "${CYAN}[Ubuntu Guest] Instalando ambiente gráfico leve (XFCE4 + TigerVNC) para celular/tablet...${NC}"
+echo -e "${CYAN}[Ubuntu Guest] Instalando ambiente gráfico leve (XFCE4 + TigerVNC + noVNC/websockify)...${NC}"
 apt-get install -y \
     xfce4 \
     xfce4-goodies \
     xfce4-terminal \
     tigervnc-standalone-server \
     tigervnc-common \
+    novnc \
+    python3-websockify \
     x11-xserver-utils
 
 echo -e "${CYAN}[Ubuntu Guest] Instalando o Google Antigravity CLI (agy)...${NC}"
 if curl -fsSL https://antigravity.google/cli/install.sh | bash; then
     echo -e "${GREEN}[Ubuntu Guest] Antigravity CLI instalado pelo script oficial!${NC}"
 else
-    echo -e "${YELLOW}[Ubuntu Guest] Aviso: Instalador remoto não completou automaticamente. Configurando wrapper de instalação sob demanda...${NC}"
+    echo -e "${YELLOW}[Ubuntu Guest] Aviso: Instalador remoto será finalizado no primeiro boot do agy.${NC}"
 fi
 
 # Garante que ~/.local/bin e caminhos do Antigravity estejam no PATH
@@ -66,13 +68,15 @@ export DISPLAY="${DISPLAY:-:1}"
 EOF
 fi
 
-# Configura xstartup do VNC para abrir o XFCE4
+# Configura xstartup do VNC para abrir o XFCE4 e já lançar o Antigravity automaticamente!
 mkdir -p "$HOME/.vnc"
 cat > "$HOME/.vnc/xstartup" << 'EOF'
 #!/usr/bin/env bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 export DISPLAY=:1
+export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$PATH"
+(sleep 3 && xfce4-terminal --maximize -T "Google Antigravity" -e "bash -ic 'agy || (curl -fsSL https://antigravity.google/cli/install.sh | bash && agy); exec bash'") &
 exec dbus-launch --exit-with-session startxfce4
 EOF
 chmod +x "$HOME/.vnc/xstartup"
@@ -85,7 +89,7 @@ Version=1.0
 Type=Application
 Name=Google Antigravity
 Comment=Iniciar Antigravity CLI / IDE no Linux Mobile
-Exec=xfce4-terminal -T "Google Antigravity (agy)" -e "bash -ic 'agy || (curl -fsSL https://antigravity.google/cli/install.sh | bash && agy); exec bash'"
+Exec=xfce4-terminal --maximize -T "Google Antigravity (agy)" -e "bash -ic 'agy || (curl -fsSL https://antigravity.google/cli/install.sh | bash && agy); exec bash'"
 Icon=utilities-terminal
 Terminal=false
 Categories=Development;IDE;
