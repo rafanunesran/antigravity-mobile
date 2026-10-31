@@ -1,18 +1,25 @@
-name: Build Android APK
+name: Build APK & Publish GitHub Pages
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  build-apk:
+  build-and-publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout repository
@@ -24,9 +31,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -36,28 +40,38 @@ jobs:
         working-directory: ./android-app
         run: gradle assembleDebug --no-daemon
 
-      - name: Rename APK
+      - name: Prepare GitHub Pages Site with Direct APK Download
         run: |
+          mkdir -p _site
+          cp -r web/* _site/
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk _site/Antigravity-Mobile-Linux.apk
           cp android-app/app/build/outputs/apk/debug/app-debug.apk Antigravity-Mobile-Linux.apk
 
-      - name: Upload APK Artifact
+      - name: Upload APK Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Antigravity-Mobile-Linux-APK
           path: Antigravity-Mobile-Linux.apk
 
-      - name: Publish Latest Release APK
-        if: github.ref == 'refs/heads/main'
+      - name: Publish GitHub Release APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "Antigravity Mobile APK v1.0.${{ github.run_number }}"
           body: |
-            ## 📱 Antigravity Mobile Linux APK
-            Aplicativo Android nativo que gerencia e executa o ambiente **Linux (Ubuntu ARM64)** e abre diretamente o **Google Antigravity** (Modo Desktop Web/noVNC embutido ou Modo Terminal Web/ttyd embutido).
-
-            ### 📥 Como instalar:
-            1. Baixe o arquivo **`Antigravity-Mobile-Linux.apk`** abaixo nos *Assets*.
-            2. Instale no seu celular ou tablet Android.
-            3. Abra o app **Antigravity** e clique em **Iniciar Antigravity Linux**.
+            ## 📱 Antigravity Mobile (Single-App Kiosk APK)
+            - 🌐 **Página de Download Direto (GitHub Pages):** https://rafanunesran.github.io/antigravity-mobile/
+            - 📥 **Link Direto do APK:** https://rafanunesran.github.io/antigravity-mobile/Antigravity-Mobile-Linux.apk
           files: Antigravity-Mobile-Linux.apk
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Antigravity Mobile — Download APK (Android & Tablet)</title>
+  <meta name="description" content="Baixe o APK do Antigravity para Celular e Tablet Android. Rode o Google Antigravity em modo Kiosk (Single-App) sobre Ubuntu ARM64." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07090e;
+      --card: rgba(18, 24, 36, 0.78);
+      --border: rgba(88, 166, 255, 0.18);
+      --primary: #58a6ff;
+      --primary-glow: rgba(88, 166, 255, 0.35);
+      --accent: #3fb950;
+      --accent-hover: #2ea043;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --code-bg: #0d1117;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle at 20% 15%, rgba(88, 166, 255, 0.14), transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(63, 185, 80, 0.12), transparent 40%);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+      padding: 24px 16px 64px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0 36px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 44px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1f6feb, #3fb950);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: #fff;
+      box-shadow: 0 4px 20px var(--primary-glow);
+    }
+
+    .repo-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .repo-link:hover {
+      color: var(--text);
+      border-color: var(--primary);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.35fr 0.95fr;
+      gap: 28px;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    @media (max-width: 780px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(88, 166, 255, 0.12);
+      border: 1px solid var(--border);
+      color: var(--primary);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4.5vw, 3.1rem);
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+
+    h1 span {
+      background: linear-gradient(90deg, #58a6ff, #3fb950);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin-bottom: 28px;
+    }
+
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(135deg, #2ea043, #238636);
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 16px 28px;
+      border-radius: 12px;
+      text-decoration: none;
+      box-shadow: 0 10px 28px rgba(46, 160, 67, 0.35);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .btn-download:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 34px rgba(46, 160, 67, 0.5);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 15px 20px;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      background: rgba(88, 166, 255, 0.08);
+    }
+
+    .version-meta {
+      margin-top: 14px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+    }
+
+    .qr-card {
+      text-align: center;
+    }
+
+    .qr-card img {
+      width: 180px;
+      height: 180px;
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px;
+      margin: 12px auto;
+      display: block;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 20px;
+      margin-top: 28px;
+    }
+
+    .step-num {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(88, 166, 255, 0.16);
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 0.85rem;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    .card h3 {
+      font-size: 1.08rem;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .code-box {
+      margin-top: 24px;
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      overflow-x: auto;
+    }
+
+    .code-box code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.84rem;
+      color: #79c0ff;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      background: #21262d;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: #30363d;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-badge">A</div>
+        <span>Antigravity Mobile</span>
+      </div>
+      <a class="repo-link" href="https://github.com/rafanunesran/antigravity-mobile" target="_blank" rel="noopener">
+        GitHub Repository ↗
+      </a>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="pill">✨ Android & Tablet • Modo Kiosk Single-App</div>
+        <h1>Rode o <span>Google Antigravity</span> direto no Celular e Tablet</h1>
+        <p class="subtitle">
+          Aplicativo Android nativo (<strong>.apk</strong>) que sobe um container <strong>Ubuntu ARM64</strong> transparente em segundo plano e abre diretamente a janela do Antigravity em tela cheia — sem precisar mexer em área de trabalho do Linux.
+        </p>
+
+        <div class="cta-group">
+          <a id="apk-download-btn" class="btn-download" href="./Antigravity-Mobile-Linux.apk" download>
+            ⬇️ Baixar Antigravity APK
+          </a>
+          <a class="btn-secondary" href="https://github.com/rafanunesran/antigravity-mobile/releases/latest" target="_blank" rel="noopener">
+            📦 Ver Releases
+          </a>
+        </div>
+        <div id="version-info" class="version-meta">
+          📦 Download direto do APK compilado para Android 8.0+ (ARM64)
+        </div>
+      </div>
+
+      <div class="card qr-card">
+        <h3>📱 Escaneie no Celular / Tablet</h3>
+        <p>Aponte a câmera para baixar o APK direto no aparelho:</p>
+        <img id="qr-img" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https://rafanunesran.github.io/antigravity-mobile/Antigravity-Mobile-Linux.apk" alt="QR Code Download APK" />
+        <p style="font-size: 0.8rem;">Link direto: <code>Antigravity-Mobile-Linux.apk</code></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>⚡ Configuração Única do Motor Linux (1º Uso)</h3>
+      <p>
+        O APK usa o motor do <strong>Termux (F-Droid)</strong> em segundo plano para rodar o Ubuntu ARM64 com <code>glibc &gt;= 2.28</code> sem precisar de root. Na primeira vez, rode o comando abaixo no Termux (ou clique no botão de configuração dentro do próprio APK):
+      </p>
+      <div class="code-box">
+        <code id="install-cmd">pkg update -y && pkg install -y git curl && git clone https://github.com/rafanunesran/antigravity-mobile.git && cd antigravity-mobile && bash install.sh</code>
+        <button class="copy-btn" onclick="copyInstallCmd(this)">📋 Copiar</button>
+      </div>
+    </section>
+
+    <div class="steps-grid">
+      <div class="card">
+        <div class="step-num">1</div>
+        <h3>Baixe e Instale o APK</h3>
+        <p>Clique no botão verde acima no seu tablet ou celular Android para baixar e instalar o app <strong>Antigravity</strong>.</p>
+      </div>
+      <div class="card">
+        <div class="step-num">2</div>
+        <h3>Modo Kiosk (Single-App)</h3>
+        <p>No tablet, o container Linux usa <code>Openbox</code> sem bordas para exibir exclusivamente a janela do Antigravity ocupando 100% da tela.</p>
+      </div>
+      <div class="card">
+        <div class="step-num">3</div>
+        <h3>Auto-Boot em 1 Toque</h3>
+        <p>Sempre que tocar no ícone do Antigravity no Android, ele acorda o motor Ubuntu ARM64 automaticamente e abre direto no app.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function copyInstallCmd(btn) {
+      const cmd = document.getElementById('install-cmd').innerText;
+      navigator.clipboard.writeText(cmd);
+      const original = btn.innerText;
+      btn.innerText = '✅ Copiado!';
+      setTimeout(() => { btn.innerText = original; }, 2000);
+    }
+
+    // Busca informações da última release na API do GitHub para exibir a versão atualizada
+    fetch('https://api.github.com/repos/rafanunesran/antigravity-mobile/releases/latest')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.tag_name) {
+          document.getElementById('version-info').innerText =
+            `✅ Versão mais recente: ${data.tag_name} • Atualizado em ${new Date(data.published_at).toLocaleDateString('pt-BR')}`;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
