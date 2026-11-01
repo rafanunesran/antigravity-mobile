@@ -1,53 +1,47 @@
 package com.ran.antigravity
 
 import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.webkit.CookieManager
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var rootLayout: FrameLayout
-    private lateinit var splashOverlay: LinearLayout
     private lateinit var webView: WebView
-    private lateinit var statusText: TextView
-    private lateinit var setupButtonsContainer: LinearLayout
-    private lateinit var progressBar: ProgressBar
+    private lateinit var topProgressBar: ProgressBar
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
 
-    private val executor = Executors.newSingleThreadExecutor()
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    // No tablet/celular, o APK se conecta diretamente à janela fullscreen do Antigravity:
-    // Porta 6080 -> Janela Kiosk do Antigravity Desktop (sem barras do Linux)
-    // Porta 7681 -> Antigravity nativo via WebSocket (ttyd)
-    private val URL_KIOSK_APP = "http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=remote&reconnect=true&show_dot=false"
-    private val URL_CLI_APP = "http://127.0.0.1:7681"
-    private val INSTALL_CMD = "pkg update -y && pkg install -y git curl && git clone https://github.com/rafanunesran/antigravity-mobile.git ~/antigravity-mobile 2>/dev/null || (cd ~/antigravity-mobile && git pull); bash ~/antigravity-mobile/install.sh"
+    companion object {
+        private const val PREFS_NAME = "antigravity_cloud_prefs"
+        private const val KEY_REMOTE_URL = "remote_url"
+        private const val DEFAULT_CLOUD_URL =
+            "https://antigravity.google.com/r/a1080bc4-c4b4-48ed-bea5-1c01174c89d5-v2"
+        private const val FILE_CHOOSER_RESULT_CODE = 1001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,8 +52,18 @@ class MainActivity : AppCompatActivity() {
         buildUI()
         enableImmersiveFullscreen()
 
-        // Ao tocar no ícone do app no Tablet/Celular, já inicia e abre direto o Antigravity!
-        autoBootAntigravity()
+        // Abre direto a máquina na nuvem como um aplicativo nativo
+        webView.loadUrl(getSavedCloudUrl())
+    }
+
+    private fun getSavedCloudUrl(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_REMOTE_URL, DEFAULT_CLOUD_URL) ?: DEFAULT_CLOUD_URL
+    }
+
+    private fun saveCloudUrl(url: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_REMOTE_URL, url.trim()).apply()
     }
 
     private fun enableImmersiveFullscreen() {
@@ -67,7 +71,8 @@ class MainActivity : AppCompatActivity() {
             window.setDecorFitsSystemWindows(false)
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
             @Suppress("DEPRECATION")
@@ -78,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                     or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
+                )
         }
     }
 
@@ -88,89 +93,104 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0D1117"))
         }
 
-        // WebView 100% Tela Cheia que exibe exclusivamente a janela do Antigravity
         webView = WebView(this).apply {
-            visibility = View.GONE
             setBackgroundColor(Color.parseColor("#0D1117"))
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.databaseEnabled = true
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-            settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                javaScriptCanOpenWindowsAutomatically = true
+                setSupportMultipleWindows(false)
+                cacheMode = WebSettings.LOAD_DEFAULT
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                // Remove a assinatura "; wv" do WebView para permitir login Google OAuth nativo sem bloqueio 403
+                val defaultUa = userAgentString ?: ""
+                userAgentString = defaultUa
+                    .replace("; wv", "")
+                    .replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
+            }
+
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(this, true)
+
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): Boolean {
+                    val targetUrl = request?.url?.toString() ?: return false
+                    return if (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) {
+                        false // Mantém toda a navegação e login Google dentro do próprio APK
+                    } else {
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                        } catch (_: Exception) {
+                        }
+                        true
+                    }
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    // Oculta a barra lateral do noVNC para parecer um app nativo puro do Antigravity
-                    view?.evaluateJavascript(
-                        """
-                        (function() {
-                            var style = document.createElement('style');
-                            style.innerHTML = '#noVNC_control_bar, #noVNC_control_bar_anchor, #noVNC_status { display: none !important; } body { background: #0D1117 !important; margin: 0; overflow: hidden; }';
-                            document.head.appendChild(style);
-                        })();
-                        """.trimIndent(),
-                        null
-                    )
+                    CookieManager.getInstance().flush()
                 }
             }
-            webChromeClient = WebChromeClient()
+
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    if (newProgress < 100) {
+                        topProgressBar.visibility = View.VISIBLE
+                        topProgressBar.progress = newProgress
+                    } else {
+                        topProgressBar.visibility = View.GONE
+                    }
+                }
+
+                override fun onShowFileChooser(
+                    webView: WebView?,
+                    filePathCallback: ValueCallback<Array<Uri>>?,
+                    fileChooserParams: FileChooserParams?
+                ): Boolean {
+                    fileUploadCallback?.onReceiveValue(null)
+                    fileUploadCallback = filePathCallback
+                    return try {
+                        val intent = fileChooserParams?.createIntent()
+                            ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                            }
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, FILE_CHOOSER_RESULT_CODE)
+                        true
+                    } catch (_: Exception) {
+                        fileUploadCallback = null
+                        false
+                    }
+                }
+            }
         }
 
-        // Splash Screen minimalista enquanto o motor Linux sobe o Antigravity em background
-        splashOverlay = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(64, 64, 64, 64)
-            setBackgroundColor(Color.parseColor("#0D1117"))
-        }
-
-        val title = TextView(this).apply {
-            text = "Antigravity"
-            textSize = 32f
-            setTextColor(Color.parseColor("#E6EDF3"))
-            gravity = Gravity.CENTER
-        }
-
-        statusText = TextView(this).apply {
-            text = "Iniciando Antigravity..."
-            textSize = 15f
-            setTextColor(Color.parseColor("#8B949E"))
-            gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 32)
-        }
-
-        progressBar = ProgressBar(this).apply {
+        topProgressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
             visibility = View.VISIBLE
         }
 
-        setupButtonsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
+        // Botão flutuante discreto no canto superior direito (toque longo ou clique para trocar link/recarregar)
+        val quickMenuPill = TextView(this).apply {
+            text = "⚙️"
+            textSize = 14f
+            alpha = 0.35f
+            setTextColor(Color.WHITE)
+            setPadding(24, 16, 24, 16)
+            setBackgroundColor(Color.parseColor("#33161B22"))
+            setOnClickListener {
+                showQuickMenu()
+            }
         }
-
-        val btnRetry = createButton("🔄 Tentar Conectar Novamente", "#238636") {
-            autoBootAntigravity()
-        }
-
-        val btnSwitchCli = createButton("⚡ Abrir em Modo Terminal (CLI)", "#1F6FEB") {
-            openAntigravitySurface(URL_CLI_APP)
-        }
-
-        val btnFirstSetup = createButton("📦 Configurar Motor Linux (Apenas 1ª Vez)", "#30363D") {
-            runFirstTimeSetup()
-        }
-
-        setupButtonsContainer.addView(btnRetry)
-        setupButtonsContainer.addView(btnSwitchCli)
-        setupButtonsContainer.addView(btnFirstSetup)
-
-        splashOverlay.addView(title)
-        splashOverlay.addView(statusText)
-        splashOverlay.addView(progressBar)
-        splashOverlay.addView(setupButtonsContainer)
 
         rootLayout.addView(
             webView,
@@ -179,120 +199,83 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
         rootLayout.addView(
-            splashOverlay,
+            topProgressBar,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                8,
+                Gravity.TOP
             )
+        )
+
+        rootLayout.addView(
+            quickMenuPill,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            ).apply {
+                setMargins(0, 24, 24, 0)
+            }
         )
 
         setContentView(rootLayout)
     }
 
-    private fun createButton(label: String, hexColor: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor(hexColor))
-            val params = LinearLayout.LayoutParams(720, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 14, 0, 14)
-            }
-            layoutParams = params
-            setPadding(32, 28, 32, 28)
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun autoBootAntigravity() {
-        progressBar.visibility = View.VISIBLE
-        setupButtonsContainer.visibility = View.GONE
-        statusText.text = "Iniciando Antigravity..."
-
-        // Acorda o container Linux silenciosamente em segundo plano
-        sendTermuxCommand("/data/data/com.termux/files/usr/bin/agy-mobile", arrayOf("app-daemon", "both"))
-
-        executor.execute {
-            var targetUrl: String? = null
-            for (attempt in 1..20) {
-                if (isPortOpen("http://127.0.0.1:6080")) {
-                    targetUrl = URL_KIOSK_APP
-                    break
-                } else if (isPortOpen("http://127.0.0.1:7681")) {
-                    targetUrl = URL_CLI_APP
-                    break
-                }
-                Thread.sleep(600)
-            }
-
-            mainHandler.post {
-                if (targetUrl != null) {
-                    openAntigravitySurface(targetUrl)
-                } else {
-                    progressBar.visibility = View.GONE
-                    statusText.text = "Motor Linux ainda não inicializado neste aparelho."
-                    setupButtonsContainer.visibility = View.VISIBLE
-                }
-            }
-        }
-    }
-
-    private fun openAntigravitySurface(url: String) {
-        splashOverlay.visibility = View.GONE
-        webView.visibility = View.VISIBLE
-        webView.loadUrl(url)
-    }
-
-    private fun runFirstTimeSetup() {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Install Antigravity", INSTALL_CMD))
-        Toast.makeText(
-            this,
-            "Comando copiado! Cole no Termux para concluir a instalação única.",
-            Toast.LENGTH_LONG
-        ).show()
-
-        sendTermuxCommand(
-            "/data/data/com.termux/files/usr/bin/bash",
-            arrayOf("-c", INSTALL_CMD),
-            background = false
+    private fun showQuickMenu() {
+        val options = arrayOf(
+            "🔄 Recarregar Sessão Atual",
+            "🚀 Ir para Minha Máquina Cloud (Padrão)",
+            "🌐 Painel Geral Antigravity (Trocar Sessão)",
+            "✏️ Alterar Link da Sessão Cloud"
         )
-
-        val launchIntent = packageManager.getLaunchIntentForPackage("com.termux")
-        if (launchIntent != null) {
-            startActivity(launchIntent)
-        }
+        AlertDialog.Builder(this)
+            .setTitle("Antigravity Cloud")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> webView.reload()
+                    1 -> webView.loadUrl(getSavedCloudUrl())
+                    2 -> webView.loadUrl("https://antigravity.google.com")
+                    3 -> showEditUrlDialog()
+                }
+            }
+            .show()
     }
 
-    private fun sendTermuxCommand(executable: String, args: Array<String>, background: Boolean = true) {
-        try {
-            val intent = Intent().apply {
-                setClassName("com.termux", "com.termux.app.RunCommandService")
-                action = "com.termux.RUN_COMMAND"
-                putExtra("com.termux.RUN_COMMAND_PATH", executable)
-                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args)
-                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-                putExtra("com.termux.RUN_COMMAND_BACKGROUND", background)
-            }
-            startService(intent)
-        } catch (_: Exception) {
+    private fun showEditUrlDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(getSavedCloudUrl())
+            setSelection(text.length)
         }
+        AlertDialog.Builder(this)
+            .setTitle("Link da Sessão Antigravity")
+            .setMessage("Cole o link do /remote-control da sua máquina na nuvem:")
+            .setView(input)
+            .setPositiveButton("Salvar e Abrir") { _, _ ->
+                val newUrl = input.text.toString().trim()
+                if (newUrl.startsWith("http")) {
+                    saveCloudUrl(newUrl)
+                    webView.loadUrl(newUrl)
+                    Toast.makeText(this, "Link atualizado!", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNeutralButton("Restaurar Padrão") { _, _ ->
+                saveCloudUrl(DEFAULT_CLOUD_URL)
+                webView.loadUrl(DEFAULT_CLOUD_URL)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
-    private fun isPortOpen(urlStr: String): Boolean {
-        return try {
-            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 500
-                readTimeout = 500
-                requestMethod = "GET"
-            }
-            val code = conn.responseCode
-            conn.disconnect()
-            code in 200..499
-        } catch (_: Exception) {
-            false
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FILE_CHOOSER_RESULT_CODE) {
+            val results = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+            fileUploadCallback?.onReceiveValue(results)
+            fileUploadCallback = null
         }
     }
 
@@ -303,10 +286,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (webView.visibility == View.VISIBLE && webView.canGoBack()) {
+        if (webView.canGoBack()) {
             webView.goBack()
         } else {
+            @Suppress("DEPRECATION")
             super.onBackPressed()
         }
     }
